@@ -141,12 +141,12 @@ echo "=== Upload complete ==="
                                 ],
                                 resources=client.V1ResourceRequirements(
                                     requests={
-                                        "cpu": "100m",
-                                        "memory": "256Mi"
+                                        "cpu": "250m",
+                                        "memory": "512Mi"
                                     },
                                     limits={
-                                        "cpu": "500m",
-                                        "memory": "512Mi"
+                                        "cpu": "1000m",
+                                        "memory": "1536Mi"
                                     }
                                 ),
                                 volume_mounts=[
