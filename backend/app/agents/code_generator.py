@@ -29,14 +29,36 @@ class CodeGeneratorAgent(BaseAgent):
 - Весь интерактив (если нужен) — только через CSS (hover:, focus: классы Tailwind)"""
 
     async def run(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """input_data: {"file": {...}, "project_spec": {...}}. Возвращает {"path": str, "content": str}."""
+        """input_data: {"file": {...}, "project_spec": {...}, "generated_files": {path: content}}.
+        Возвращает {"path": str, "content": str}."""
         file_spec = input_data["file"]
         project_spec = input_data.get("project_spec", {})
+        generated_files: dict[str, str] = input_data.get("generated_files", {})
 
         user_prompt = (
             f"Файл для генерации: {json.dumps(file_spec, ensure_ascii=False)}\n"
             f"Контекст проекта: {json.dumps(project_spec, ensure_ascii=False, indent=2)}"
         )
+
+        if generated_files:
+            deps_text = "\n\n".join(
+                f"--- {path} ---\n{content}"
+                for path, content in generated_files.items()
+            )
+            user_prompt += (
+                f"\n\nУже сгенерированные зависимости (используй их интерфейсы точно — "
+                f"пропсы, слоты, имена компонентов должны совпадать):\n{deps_text}"
+            )
+
+        critique: list[dict] = input_data.get("critique", [])
+        if critique:
+            issues_text = "\n".join(
+                f"- [{i['severity'].upper()}] {i['description']}"
+                for i in critique
+                if i.get("file") == file_spec["path"]
+            )
+            if issues_text:
+                user_prompt += f"\n\nЗамечания от ревьюера (ОБЯЗАТЕЛЬНО исправь):\n{issues_text}"
 
         content = await self._call_llm(self.SYSTEM_PROMPT, user_prompt)
         return {"path": file_spec["path"], "content": content}
