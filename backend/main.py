@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import auth, users, projects, assets, templates, snapshots, deployments
 from app.api.v1.generation.router import router as generation_router
 from app.api.v1.editor.router import router as editor_router
+from app.api.v1.admin.router import router as admin_router
 from app.core.config import settings
 from app.core.dependencies import close_redis, init_redis
 from app.core.logging import setup_logging
@@ -61,6 +62,7 @@ def create_application() -> FastAPI:
     application.include_router(deployments.router, prefix=api_v1_prefix)
     application.include_router(generation_router, prefix=api_v1_prefix)
     application.include_router(editor_router, prefix=api_v1_prefix)
+    application.include_router(admin_router, prefix=api_v1_prefix)
 
     return application
 

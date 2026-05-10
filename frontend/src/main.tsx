@@ -12,6 +12,7 @@ import GeneratePage from '@/pages/GeneratePage';
 import EditorPage from '@/pages/EditorPage';
 import NotFoundPage from '@/pages/NotFoundPage';
 import AppLayout from '@/components/layout/AppLayout';
+import AdminPage from '@/pages/AdminPage';
 import './index.css';
 
 function AuthCallback() {
@@ -82,6 +83,16 @@ createRoot(document.getElementById('root')!).render(
               element={
                 <ProtectedRoute>
                   <EditorPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute requiredRole="admin">
+                  <AppLayout>
+                    <AdminPage />
+                  </AppLayout>
                 </ProtectedRoute>
               }
             />
