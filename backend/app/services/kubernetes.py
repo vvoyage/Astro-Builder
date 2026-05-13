@@ -78,26 +78,23 @@ class KubernetesService:
                         containers=[
                             client.V1Container(
                                 name="builder",
-                                image="node:22",
+                                image="astro-builder:latest",
+                                image_pull_policy="Never",
                                 command=["/bin/sh", "-c"],
                                 args=["""set -e
-
-# ставим mc (MinIO Client)
-apt-get update -qq && apt-get install -y -qq wget
-wget -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc
-chmod +x /usr/local/bin/mc
 
 mc alias set minio $MINIO_URL $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
 
 echo "=== Source files in MinIO ==="
 mc ls --recursive minio/astro-projects/projects/$USER_ID/$PROJECT_ID/src/
 
-# workspace должен быть пустым, иначе create-astro ругается
+# workspace должен быть пустым, иначе шаблон не скопируется корректно
 WORKDIR=/workspace/$PROJECT_ID
 rm -rf "$WORKDIR" && mkdir -p "$WORKDIR"
 cd "$WORKDIR"
 
-npx --yes create-astro@latest . --template basics --no-install --no-git --yes
+# используем предустановленный шаблон из образа вместо npx create-astro
+cp -r /astro-template/. .
 
 # кладём AI-сгенерированные файлы поверх дефолтного шаблона
 mc cp --recursive minio/astro-projects/projects/$USER_ID/$PROJECT_ID/src/ ./src/
@@ -137,22 +134,30 @@ echo "=== Upload complete ==="
                                     client.V1EnvVar(
                                         name="MINIO_SECRET_KEY",
                                         value=settings.MINIO_SECRET_KEY
+                                    ),
+                                    client.V1EnvVar(
+                                        name="NPM_CONFIG_CACHE",
+                                        value="/npm-cache"
                                     )
                                 ],
                                 resources=client.V1ResourceRequirements(
                                     requests={
-                                        "cpu": "100m",
-                                        "memory": "256Mi"
+                                        "cpu": "250m",
+                                        "memory": "512Mi"
                                     },
                                     limits={
-                                        "cpu": "500m",
-                                        "memory": "512Mi"
+                                        "cpu": "1000m",
+                                        "memory": "1536Mi"
                                     }
                                 ),
                                 volume_mounts=[
                                     client.V1VolumeMount(
                                         name="workspace",
                                         mount_path="/workspace"
+                                    ),
+                                    client.V1VolumeMount(
+                                        name="npm-cache",
+                                        mount_path="/npm-cache"
                                     )
                                 ]
                             )
@@ -163,6 +168,10 @@ echo "=== Upload complete ==="
                                 persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(
                                     claim_name="project-storage-pvc"
                                 )
+                            ),
+                            client.V1Volume(
+                                name="npm-cache",
+                                empty_dir=client.V1EmptyDirVolumeSource()
                             )
                         ],
                         restart_policy="Never"

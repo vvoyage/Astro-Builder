@@ -23,7 +23,7 @@ export interface GenerationResponse {
 }
 
 export interface GenerationStatus {
-  stage: 'queued' | 'optimizer' | 'architect' | 'code_generator' | 'saving' | 'building' | 'done' | 'failed' | 'error';
+  stage: 'queued' | 'optimizer' | 'architect' | 'code_generator' | 'critic' | 'saving' | 'building' | 'done' | 'failed' | 'error';
   progress: number;
   message?: string;
   preview_url?: string;

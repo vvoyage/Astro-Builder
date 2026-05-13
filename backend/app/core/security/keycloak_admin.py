@@ -116,6 +116,22 @@ async def create_keycloak_user(
         return keycloak_id
 
 
+async def set_user_enabled(keycloak_id: str, enabled: bool) -> None:
+    """Включить или отключить (забанить) пользователя в Keycloak."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        token = await _get_admin_token(client)
+        resp = await client.put(
+            f"{_ADMIN_BASE}/users/{keycloak_id}",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"enabled": enabled},
+        )
+        if resp.status_code not in (200, 204):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Keycloak ban failed: {resp.text}",
+            )
+
+
 async def delete_keycloak_user(keycloak_id: str) -> None:
     """Удалить пользователя из Keycloak.
 

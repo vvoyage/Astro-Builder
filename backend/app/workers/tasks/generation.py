@@ -49,6 +49,52 @@ def run_generation_pipeline(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _expand_with_dependents(files_to_regen: list[str], sorted_files: list[dict]) -> list[str]:
+    """BFS по обратному графу зависимостей: возвращает files_to_regen + все файлы, которые зависят от них."""
+    # Строим обратный граф: dependent -> set of dependencies
+    reverse: dict[str, set[str]] = {f["path"]: set() for f in sorted_files}
+    for f in sorted_files:
+        for dep in f.get("dependencies", []):
+            if dep in reverse:
+                reverse[dep].add(f["path"])
+
+    # BFS
+    queue = list(files_to_regen)
+    visited: set[str] = set(files_to_regen)
+    while queue:
+        current = queue.pop(0)
+        for dependent in reverse.get(current, set()):
+            if dependent not in visited:
+                visited.add(dependent)
+                queue.append(dependent)
+
+    # Возвращаем в исходном топологическом порядке
+    return [f["path"] for f in sorted_files if f["path"] in visited]
+
+
+def _topological_sort(files: list[dict]) -> list[dict]:
+    """Сортирует файлы так, чтобы зависимости шли раньше зависящих от них файлов."""
+    path_to_file = {f["path"]: f for f in files}
+    visited: set[str] = set()
+    result: list[dict] = []
+
+    def visit(path: str) -> None:
+        if path in visited:
+            return
+        visited.add(path)
+        file = path_to_file.get(path)
+        if file is None:
+            return
+        for dep in file.get("dependencies", []):
+            visit(dep)
+        result.append(file)
+
+    for f in files:
+        visit(f["path"])
+
+    return result
+
+
 def _set_redis_status(project_id: str, stage: str, progress: int) -> None:
     try:
         r = redis_lib.from_url(settings.REDIS_URL)
@@ -97,18 +143,62 @@ async def _pipeline(
         logger.info("A1 file plan (%d files): %s", len(files_list), json.dumps(files_list, ensure_ascii=False, indent=2))
     _set_redis_status(project_id, "architect", 45)
 
-    # A2 — генерируем код всех файлов параллельно
+    # A2 — генерируем код файлов последовательно в порядке топологической сортировки,
+    # передавая каждому следующему файлу код уже сгенерированных зависимостей
     _set_redis_status(project_id, "code_generator", 50)
     code_gen = CodeGeneratorAgent(model=ai_model)
-    results: list[dict] = await asyncio.gather(
-        *[
-            code_gen.run({"file": file_spec, "project_spec": structured_spec})
-            for file_spec in files_list
-        ]
-    )
-    generated_files: dict[str, str] = {r["path"]: r["content"] for r in results}
+    sorted_files = _topological_sort(files_list)
+    generated_files: dict[str, str] = {}
+    for i, file_spec in enumerate(sorted_files):
+        deps_context = {
+            path: content
+            for path, content in generated_files.items()
+            if path in file_spec.get("dependencies", [])
+        }
+        result = await code_gen.run({
+            "file": file_spec,
+            "project_spec": structured_spec,
+            "generated_files": deps_context,
+        })
+        generated_files[result["path"]] = result["content"]
+        progress = 50 + int((i + 1) / len(sorted_files) * 15)
+        _set_redis_status(project_id, "code_generator", progress)
     logger.info("A2 generated %d files: %s", len(generated_files), list(generated_files.keys()))
     _set_redis_status(project_id, "code_generator", 65)
+
+    # Critic — проверяем качество, при необходимости перегенерируем проблемные файлы
+    _set_redis_status(project_id, "critic", 66)
+    try:
+        from app.agents.critic import CriticAgent  # noqa: PLC0415
+        critic = CriticAgent(model=ai_model)
+        critic_result = await critic.run({"files": generated_files, "spec": structured_spec})
+        logger.info("Critic result: approved=%s score=%s issues=%d",
+                    critic_result.get("approved"), critic_result.get("score"), len(critic_result.get("issues", [])))
+        if not critic_result.get("approved", True) and critic_result.get("regenerate_files"):
+            to_regen = _expand_with_dependents(critic_result["regenerate_files"], sorted_files)
+            logger.info("Critic: regenerating %d files: %s", len(to_regen), to_regen)
+            critique_issues = critic_result.get("issues", [])
+            for i, file_path in enumerate(to_regen):
+                file_spec = next((f for f in sorted_files if f["path"] == file_path), None)
+                if file_spec is None:
+                    continue
+                deps_context = {
+                    path: content
+                    for path, content in generated_files.items()
+                    if path in file_spec.get("dependencies", [])
+                }
+                result = await code_gen.run({
+                    "file": file_spec,
+                    "project_spec": structured_spec,
+                    "generated_files": deps_context,
+                    "critique": critique_issues,
+                })
+                generated_files[result["path"]] = result["content"]
+                progress = 66 + int((i + 1) / len(to_regen) * 2)
+                _set_redis_status(project_id, "critic", progress)
+    except Exception:
+        logger.warning("Critic failed, continuing best-effort", exc_info=True)
+    _set_redis_status(project_id, "critic", 68)
 
     # сохраняем исходники в MinIO
     _set_redis_status(project_id, "saving", 70)
