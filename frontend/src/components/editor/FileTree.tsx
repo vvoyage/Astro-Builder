@@ -1,7 +1,5 @@
 import { useState } from 'react';
 import { useEditorStore } from '@/store/editorStore';
-import { getFile } from '@/api/editor';
-import { toast } from 'sonner';
 
 interface TreeNode {
   name: string;
@@ -78,7 +76,7 @@ function FileIcon({ name }: { name: string }) {
 }
 
 function TreeNodeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
-  const { currentFile, setCurrentFile, setFileContent, projectId } = useEditorStore();
+  const { currentFile, projectId } = useEditorStore();
   const [open, setOpen] = useState(depth === 0);
 
   const handleClick = async () => {
@@ -87,13 +85,9 @@ function TreeNodeItem({ node, depth = 0 }: { node: TreeNode; depth?: number }) {
       return;
     }
     if (!projectId) return;
-    setCurrentFile(node.path);
-    try {
-      const fc = await getFile(projectId, node.path);
-      setFileContent(fc.content);
-    } catch {
-      toast.error(`Не удалось загрузить файл: ${node.name}`);
-    }
+    
+    // Функция loadFile из стора обрабатывает установку текущего файла, загрузку контента и обновление превью
+    await useEditorStore.getState().loadFile(node.path);
   };
 
   const isActive = currentFile === node.path;

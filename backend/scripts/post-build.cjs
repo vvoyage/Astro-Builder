@@ -30,6 +30,14 @@ const LISTENER_SCRIPT = `<script>
 
   // Клик на элемент → postMessage в родителя
   document.addEventListener('click', function (e) {
+    // Перехватываем клики по ссылкам для навигации
+    var a = e.target.closest('a');
+    if (a && a.getAttribute('href') && (a.getAttribute('href').startsWith('/') || a.getAttribute('href').startsWith('./'))) {
+      e.preventDefault();
+      window.parent.postMessage({ type: 'navigate', href: a.getAttribute('href') }, '*');
+      return;
+    }
+
     var el = e.target.closest('[data-editable-id]');
 
     if (!el) {
@@ -49,8 +57,8 @@ const LISTENER_SCRIPT = `<script>
       window.parent.postMessage({ type: 'element-deselected' }, '*');
     } else {
       _currentId = el.dataset.editableId;
-      // Temporarily strip highlight styles before capturing outerHTML
-      // so the AI doesn't preserve the debug outline in the source file
+      // Временно убираем стили выделения перед захватом outerHTML,
+      // чтобы ИИ не сохранил отладочную обводку в исходном файле
       var prevOutline = el.style.outline;
       var prevOutlineOffset = el.style.outlineOffset;
       el.style.outline = '';

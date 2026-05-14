@@ -56,10 +56,23 @@ export default function EditorPage() {
     queryKey: ['project-status', projectId],
     queryFn: async () => {
       const s = await getProjectStatus(projectId!);
-      if (s.preview_url) setPreviewUrl(s.preview_url);
-      // Синхронизируем активную версию из БД — актуально при перезагрузке страницы
+      // Всегда синхронизируем активный снапшот
       if (s.active_snapshot_version !== undefined) {
         setActiveSnapshotVersion(s.active_snapshot_version ?? null);
+      }
+      
+      // Обновляем URL превью только если его нет, или если проект еще не готов
+      // (Это предотвращает сброс на index.html, когда пользователь просматривает другую страницу и переключается на окно)
+      const currentPreview = useEditorStore.getState().previewUrl;
+      if (s.preview_url && (!currentPreview || s.status !== 'ready')) {
+        // Устанавливаем URL только если мы не восстанавливаем уже открытую страницу,
+        // или если сборка только что завершилась и это совершенно новый URL сборки.
+        // На самом деле, если сборка только что завершилась (status 'ready'), возможно, мы хотим остаться на текущей странице?
+        // Поэтому устанавливаем URL только если у нас его вообще нет, или если это явный вызов после сборки.
+        // Вызов после сборки в CodePanel уже использует refreshPreview().
+        if (!currentPreview) {
+          setPreviewUrl(s.preview_url);
+        }
       }
       return s;
     },

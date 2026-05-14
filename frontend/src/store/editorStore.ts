@@ -23,6 +23,7 @@ interface EditorStore {
   setActiveSnapshotVersion: (version: number | null) => void;
   setSelectedElement: (el: { editable_id: string; file_path: string; element_html: string } | null) => void;
   saveFile: () => Promise<void>;
+  loadFile: (path: string) => Promise<void>;
   reloadCurrentFile: () => Promise<void>;
   refreshPreview: (newUrl?: string) => void;
 }
@@ -56,6 +57,44 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     set({ isDirty: false });
   },
 
+  loadFile: async (path: string) => {
+    const { projectId } = get();
+    if (!projectId) return;
+    
+    // Проверяем, является ли файл страницей Astro, чтобы обновить превью
+    if (path.startsWith('src/pages/') && path.endsWith('.astro')) {
+      const { previewUrl } = get();
+      if (previewUrl) {
+        const pageName = path.replace('src/pages/', '').replace('.astro', '');
+        const baseUrlMatch = previewUrl.match(/^(.*\/build)/);
+        
+        if (baseUrlMatch) {
+          const baseUrl = baseUrlMatch[1];
+          let newPreviewUrl = `${baseUrl}/index.html`;
+          
+          if (pageName !== 'index') {
+            newPreviewUrl = `${baseUrl}/${pageName}/index.html`;
+          }
+          
+          const cacheBusterMatch = previewUrl.match(/(\?t=\d+)/);
+          if (cacheBusterMatch) {
+            newPreviewUrl += cacheBusterMatch[1];
+          }
+          
+          set({ previewUrl: newPreviewUrl });
+        }
+      }
+    }
+
+    set({ currentFile: path, isDirty: false });
+    try {
+      const fc = await getFile(projectId, path);
+      set({ fileContent: fc.content });
+    } catch {
+      console.error(`Не удалось загрузить файл: ${path}`);
+    }
+  },
+
   reloadCurrentFile: async () => {
     const { projectId, currentFile } = get();
     if (!projectId || !currentFile) return;
@@ -64,7 +103,16 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
 
   refreshPreview: (newUrl?: string) => {
-    const base = (newUrl ?? get().previewUrl ?? '').split('?')[0];
+    let base = (get().previewUrl ?? newUrl ?? '').split('?')[0];
+    
+    // Если мы обновляем URL после завершения сборки, но в данный момент находимся на подстранице,
+    // мы должны попытаться сохранить эту подстраницу в новом URL, если новый URL указывает только на главную (index.html).
+    if (newUrl && base && newUrl !== base && newUrl.endsWith('/build/index.html') && !base.endsWith('/build/index.html')) {
+      // Сохраняем базовый URL текущей подстраницы
+    } else if (newUrl) {
+      base = newUrl.split('?')[0];
+    }
+    
     if (!base) return;
     set({ previewUrl: `${base}?t=${Date.now()}` });
   },
