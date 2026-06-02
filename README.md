@@ -54,3 +54,12 @@
 
 ---
 
+## Эндпоинты в Swagger
+![Swagger1](./assets/openapi1.jpg)
+![Swagger2](./assets/openapi2.jpg)
+![Swagger3](./assets/openapi3.jpg)
+![Swagger4](./assets/openapi4.jpg)
+
+
+---
+
