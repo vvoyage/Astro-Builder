@@ -16,6 +16,16 @@ export default function PreviewPanel() {
         });
       } else if (e.data?.type === 'element-deselected') {
         setSelectedElement(null);
+      } else if (e.data?.type === 'navigate') {
+        let href = e.data.href;
+        // Игнорируем внешние ссылки и якоря
+        if (!href.startsWith('/') && !href.startsWith('./')) return;
+        
+        href = href.replace(/^\//, '').replace(/\/$/, '');
+        const targetFile = href === '' ? 'src/pages/index.astro' : `src/pages/${href}.astro`;
+        
+        // Используем глобальное состояние useEditorStore.getState() для загрузки файла
+        useEditorStore.getState().loadFile(targetFile);
       }
     };
     window.addEventListener('message', handler);
